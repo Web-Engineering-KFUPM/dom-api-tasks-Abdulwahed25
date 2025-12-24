@@ -1,16 +1,12 @@
 {
-  "name": "js-api-lab",
+  "name": "Lab-2-2-more-html",
+  "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "test": "jest --runInBand",
-    "grade:todos": "jest -t TODOs --runInBand",
-    "grade:correctness": "jest -t Correctness --runInBand",
-    "grade:quality": "jest -t Quality --runInBand",
-    "grade:deadline": "node tools/deadline-check.js"
-  }
-,
-  "devDependencies": {
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^29.7.0"
+    "grade": "node script.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.12"
   }
 }

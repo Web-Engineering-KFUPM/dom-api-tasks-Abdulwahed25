@@ -1,0 +1,121 @@
+name: Lab 5-1 Autograder
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # IMPORTANT: allow grade.cjs to scan past commits and ignore workflow/bot commits
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run autograder
+        run: node grade.cjs
+
+      # ✅ Builds artifacts/grade.json for the collection script
+      # ✅ Uses CSV header: student_username,obtained_marks,total_marks,status
+      - name: Build grade.json (obtained/total) for CSV collection
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f artifacts/grade.csv ]]; then
+            echo "ERROR: artifacts/grade.csv not found. Make sure grade.cjs writes it."
+            ls -la artifacts || true
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import csv, json, os, sys
+
+          path = "artifacts/grade.csv"
+          with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            if not reader.fieldnames:
+              print("ERROR: grade.csv missing header row", file=sys.stderr)
+              sys.exit(1)
+
+            fields_lower = [h.strip().lower() for h in reader.fieldnames]
+
+            def find_col(candidates):
+              for c in candidates:
+                if c in fields_lower:
+                  return reader.fieldnames[fields_lower.index(c)]
+              return None
+
+            # ✅ EXPECTED NAMES (your chosen schema)
+            obtained_col = find_col(["obtained_marks"])
+            total_col    = find_col(["total_marks"])
+
+            # Backward-compatible fallbacks
+            if not obtained_col:
+              obtained_col = find_col(["score", "obtained", "earned", "points"])
+            if not total_col:
+              total_col = find_col(["max_score", "total", "possible", "max_points", "max", "out_of"])
+
+            if not obtained_col or not total_col:
+              print("ERROR: Could not find obtained_marks/total_marks columns in grade.csv header.", file=sys.stderr)
+              print("Header:", reader.fieldnames, file=sys.stderr)
+              sys.exit(2)
+
+            obtained = 0.0
+            total = 0.0
+
+            def to_num(x):
+              x = (x or "").strip()
+              if x == "":
+                return 0.0
+              if "/" in x:
+                a, b = x.split("/", 1)
+                try:
+                  return float(a.strip()), float(b.strip())
+                except:
+                  return 0.0, 0.0
+              try:
+                return float(x)
+              except:
+                return 0.0
+
+            for row in reader:
+              o = row.get(obtained_col, "")
+              t = row.get(total_col, "")
+
+              if isinstance(o, str) and "/" in o and (t is None or str(t).strip() == ""):
+                a, b = to_num(o)
+                obtained += a
+                total += b
+              else:
+                obtained += float(to_num(o))
+                total += float(to_num(t))
+
+            def norm(n):
+              return int(n) if abs(n - int(n)) < 1e-9 else n
+
+            out = {"obtained": norm(obtained), "total": norm(total)}
+            os.makedirs("artifacts", exist_ok=True)
+            with open("artifacts/grade.json", "w", encoding="utf-8") as g:
+              json.dump(out, g)
+            print("Wrote artifacts/grade.json:", out)
+          PY
+
+      - name: Upload grading artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-5-1-grading-feedback
+          path: |
+            artifacts/grade.csv
+            artifacts/grade.json
+            artifacts/feedback/README.md
